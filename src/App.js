@@ -90,10 +90,11 @@ function App() {
       console.log('User data:', response.user);
       console.log('User role:', response.user?.role || response.user?.is_admin || response.user?.isAdmin);
       
+      const isAdmin = response.user?.is_staff || response.user?.is_superuser || response.user?.is_admin || response.user?.role === 'admin';
       setUser({ 
         name: formattedName, 
         email: response.user?.email || email,
-        role: response.user?.role || response.user?.is_admin || response.user?.isAdmin || 'user'
+        role: response.user?.role || (isAdmin ? 'admin' : 'user')
       });
       
       // Check if user is admin
@@ -262,6 +263,7 @@ function App() {
   const notificationTimeoutRef = useRef(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 9;
+  const PRIMARY_ADMIN_EMAIL = 'admin@novaedge.com';
   
   // Admin state
   const [adminBooks, setAdminBooks] = useState([]);
@@ -857,8 +859,12 @@ function App() {
     setShowBookForm(true);
   };
 
-  const handleDeleteUser = async (userId) => {
-    setUserToDelete(userId);
+  const handleDeleteUser = async (user) => {
+    if (user.email === PRIMARY_ADMIN_EMAIL) {
+      showNotification('The default administrator account cannot be deleted', 'error');
+      return;
+    }
+    setUserToDelete(user.id);
     setShowDeleteModal(true);
   };
 
@@ -899,11 +905,16 @@ function App() {
         return;
       }
       
+      const isAdmin = userFormData.role === 'admin';
       const userDataToSend = {
         ...userFormData,
         password: password,
-        password_confirm: password_confirm
+        password_confirm: password_confirm,
+        is_staff: isAdmin,
+        is_superuser: isAdmin
       };
+      delete userDataToSend.role;
+      delete userDataToSend.is_admin;
       console.log('Creating user with data:', userDataToSend);
       await bookService.createUser(userDataToSend);
       showNotification('User created successfully', 'success');
@@ -931,8 +942,20 @@ function App() {
 
   const handleUpdateUser = async (e) => {
     e.preventDefault();
+    if (editingUser?.email === PRIMARY_ADMIN_EMAIL && userFormData.role !== 'admin') {
+      showNotification('The default administrator must always have admin privileges', 'error');
+      return;
+    }
     try {
-      await bookService.updateUser(editingUser.id, userFormData);
+      const isAdmin = userFormData.role === 'admin';
+      const userDataToSend = {
+        ...userFormData,
+        is_staff: isAdmin,
+        is_superuser: isAdmin
+      };
+      delete userDataToSend.role;
+      delete userDataToSend.is_admin;
+      await bookService.updateUser(editingUser.id, userDataToSend);
       showNotification('User updated successfully', 'success');
       setShowUserForm(false);
       setEditingUser(null);
@@ -953,13 +976,14 @@ function App() {
 
   const handleEditUserClick = (user) => {
     setEditingUser(user);
+    const isPrimaryAdmin = user.email === PRIMARY_ADMIN_EMAIL;
+    const isAdmin = isPrimaryAdmin || user.is_staff || user.is_superuser || user.is_admin || user.role === 'admin';
     setUserFormData({
       username: user.username || user.email || '',
       email: user.email || '',
       first_name: user.first_name || '',
       last_name: user.last_name || '',
-      role: user.role || 'user',
-      is_admin: user.is_admin || false
+      role: isAdmin ? 'admin' : 'user'
     });
     setShowUserForm(true);
   };
@@ -1956,11 +1980,15 @@ function App() {
                         <select
                           value={userFormData.role}
                           onChange={(e) => setUserFormData({...userFormData, role: e.target.value})}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          disabled={editingUser?.email === PRIMARY_ADMIN_EMAIL}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500"
                         >
                           <option value="user">User</option>
                           <option value="admin">Admin</option>
                         </select>
+                        {editingUser?.email === PRIMARY_ADMIN_EMAIL && (
+                          <p className="mt-1 text-xs text-amber-600">The default administrator role cannot be changed.</p>
+                        )}
                       </div>
                     </div>
                     {!editingUser && (
@@ -2065,7 +2093,7 @@ function App() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {user.role || user.is_admin ? 'Admin' : 'User'}
+                          {(user.is_staff || user.is_superuser || user.is_admin || user.role === 'admin') ? (user.email === PRIMARY_ADMIN_EMAIL ? 'Admin (Primary)' : 'Admin') : 'User'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <button
@@ -2074,12 +2102,14 @@ function App() {
                           >
                             Edit
                           </button>
-                          <button
-                            onClick={() => handleDeleteUser(user.id)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            Delete
-                          </button>
+                          {user.email !== PRIMARY_ADMIN_EMAIL && (
+                            <button
+                              onClick={() => handleDeleteUser(user)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
