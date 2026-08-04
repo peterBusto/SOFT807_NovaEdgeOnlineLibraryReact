@@ -12,8 +12,8 @@ api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
-      // Try both Bearer and Token formats
-      config.headers.Authorization = `Token ${token}`;
+      // Use Bearer format for JWT authentication
+      config.headers.Authorization = `Bearer ${token}`;
       console.log('Request made with token:', token.substring(0, 20) + '...');
     } else {
       console.log('No token found in localStorage');
@@ -41,16 +41,8 @@ api.interceptors.response.use(
       console.error('Response error:', url, status);
     }
     
-    // Only redirect on 401 if it's not a login/register/wishlist request
-    if (status === 401 && 
-        !url?.includes('/login') && 
-        !url?.includes('/register') &&
-        !url?.includes('/wishlist')) {
-      console.warn('Token expired or invalid, clearing authentication');
-      localStorage.removeItem('token');
-      localStorage.removeItem('userEmail');
-      window.location.href = '/'; // Redirect to login
-    }
+    // Don't automatically redirect on 401 - let the app handle auth failures
+    // This prevents redirect loops during initial authentication
     return Promise.reject(error);
   }
 );
@@ -60,7 +52,16 @@ export const authService = {
     try {
       const response = await api.post('/api/login/', { email, password });
       console.log('Login successful with /api/login/ endpoint');
-      return response.data;
+      
+      // After successful login, get the JWT token
+      const tokenResponse = await api.post('/api/token/', { email, password });
+      console.log('Token retrieved successfully with /api/token/ endpoint');
+      
+      // Return combined data
+      return {
+        ...response.data,
+        token: tokenResponse.data.access || tokenResponse.data.token
+      };
     } catch (error) {
       console.error('Login failed with /api/login/ endpoint');
       throw new Error('Invalid email or password. Please check your credentials or register an account.');

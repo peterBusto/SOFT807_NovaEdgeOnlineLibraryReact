@@ -40,7 +40,13 @@ function App() {
         const userData = await authService.getCurrentUser();
         if (userData) {
           setIsAuthenticated(true);
-          setUser({ name: userData.name || 'User', email: userData.email || 'user@example.com' });
+          const isAdmin = userData.is_staff || userData.is_superuser || userData.is_admin || userData.role === 'admin';
+          setUser({ 
+            name: userData.name || 'User', 
+            email: userData.email || 'user@example.com',
+            role: userData.role || (isAdmin ? 'admin' : 'user')
+          });
+          setIsAdminUser(isAdmin);
         } else {
           // Token is invalid or expired or user endpoint doesn't exist
           // Keep the token and allow user to continue (user endpoint is optional)
@@ -50,6 +56,8 @@ function App() {
           const firstName = storedEmail ? storedEmail.split('@')[0].split('.')[0].split('-')[0].split('_')[0] : 'User';
           const formattedName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
           setUser({ name: formattedName || 'User', email: storedEmail || 'user@example.com' });
+          // Check admin status via API since we don't have user data
+          await checkAdminStatus();
         }
       } catch (error) {
         console.error('Auth check error:', error);
@@ -58,11 +66,12 @@ function App() {
         authService.setAuthToken(null);
         setIsAuthenticated(false);
         setUser(null);
+        setIsAdminUser(false);
       }
     }
     
-    // Check admin status if authenticated
-    if (isAuthenticated) {
+    // Check admin status if authenticated and not already set
+    if (isAuthenticated && !isAdminUser) {
       checkAdminStatus();
     }
   };
@@ -77,7 +86,11 @@ function App() {
       if (response.token) {
         authService.setAuthToken(response.token, email);
         localStorage.setItem('token', response.token);
+        localStorage.setItem('userEmail', email);
         console.log('Token stored successfully:', response.token);
+      } else {
+        console.error('No token in login response:', response);
+        throw new Error('Login response missing token');
       }
       
       setIsAuthenticated(true);
@@ -97,8 +110,15 @@ function App() {
         role: response.user?.role || (isAdmin ? 'admin' : 'user')
       });
       
-      // Check if user is admin
-      await checkAdminStatus();
+      // Set admin status based on login response
+      setIsAdminUser(isAdmin);
+      
+      // Also verify with admin API (but don't override if login response says admin)
+      const apiAdminCheck = await checkAdminStatus();
+      if (!apiAdminCheck && isAdmin) {
+        console.log('Login response indicates admin, but API check failed. Using login response.');
+        setIsAdminUser(true);
+      }
       
       console.log('User authenticated successfully');
     } catch (error) {
@@ -121,6 +141,7 @@ function App() {
         if (loginResponse.token) {
           authService.setAuthToken(loginResponse.token, userData.email);
           localStorage.setItem('token', loginResponse.token);
+          localStorage.setItem('userEmail', userData.email);
         }
         
         setIsAuthenticated(true);
@@ -742,6 +763,14 @@ function App() {
   const fetchAdminBooks = async () => {
     try {
       setLoadingAdminBooks(true);
+      // Ensure token is set before making admin API call
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('No token found in localStorage for admin books fetch');
+        showNotification('Authentication required. Please log in again.', 'error');
+        return;
+      }
+      authService.setAuthToken(token);
       const data = await bookService.getAllBooks();
       setAdminBooks(data);
     } catch (error) {
@@ -755,6 +784,14 @@ function App() {
   const fetchAdminUsers = async () => {
     try {
       setLoadingAdminUsers(true);
+      // Ensure token is set before making admin API call
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('No token found in localStorage for admin users fetch');
+        showNotification('Authentication required. Please log in again.', 'error');
+        return;
+      }
+      authService.setAuthToken(token);
       const data = await bookService.getAllUsers();
       setAdminUsers(data);
     } catch (error) {
