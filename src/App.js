@@ -488,10 +488,10 @@ function App() {
     }
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (options = {}) => {
     setLoadingTransactions(true);
     try {
-      const response = await api.get('/api/borrowing-history/');
+      const response = await api.get('/api/borrowing-history/', { params: options.params || {} });
       console.log('=== Transactions API Response ===');
       console.log('Full response:', response.data);
       
@@ -530,6 +530,22 @@ function App() {
           ? rawBook.id
           : (transaction.book_id || (typeof transaction.book === 'number' || typeof transaction.book === 'string' ? transaction.book : null));
 
+        // Build the user reference from whatever the API returns (nested object, ID, or separate fields)
+        const rawUser = transaction.user && typeof transaction.user === 'object' ? transaction.user : null;
+        const userId = rawUser
+          ? rawUser.id
+          : (transaction.user_id || (typeof transaction.user === 'number' || typeof transaction.user === 'string' ? transaction.user : null));
+        const userName = rawUser
+          ? (rawUser.name ||
+             (rawUser.first_name && rawUser.last_name ? `${rawUser.first_name} ${rawUser.last_name}` : null) ||
+             rawUser.first_name ||
+             rawUser.username ||
+             null)
+          : (transaction.user_name || transaction.username || transaction.user_email || null);
+        const userEmail = rawUser
+          ? (rawUser.email || transaction.user_email || null)
+          : (transaction.user_email || null);
+
         // Use the direct book_title and book_author fields from the API response
         const standardizedTransaction = {
           id: transaction.id,
@@ -539,6 +555,12 @@ function App() {
             author: rawBook?.author || transaction.book_author || 'Unknown Author',
             cover_image: rawBook?.cover_image || null
           },
+          user: {
+            id: userId || null,
+            name: userName,
+            email: userEmail
+          },
+          user_email: userEmail,
           borrowed_date: formatDate(transaction.borrowed_date),
           due_date: formatDate(transaction.due_date),
           status: transaction.is_returned ? 'Returned' : 'Borrowed'
@@ -793,6 +815,28 @@ function App() {
   };
 
   const popularBooks = useMemo(() => getPopularBooks(transactions, books), [transactions, books]);
+
+  // Resolve a transaction's user name, preferring the admin users list for
+  // full names but falling back to any user details carried by the transaction.
+  const getTransactionUserName = (transaction) => {
+    if (transaction.user?.id && adminUsers.length) {
+      const found = adminUsers.find((u) => String(u.id) === String(transaction.user.id));
+      if (found) {
+        return found.name ||
+          (found.first_name && found.last_name ? `${found.first_name} ${found.last_name}` : null) ||
+          found.first_name ||
+          found.username ||
+          found.email ||
+          'Unknown User';
+      }
+    }
+
+    return transaction.user?.name ||
+      transaction.user?.username ||
+      transaction.username ||
+      transaction.user_email ||
+      'Unknown User';
+  };
 
   // Fetch transactions when switching to dashboard view
   useEffect(() => {
@@ -1089,7 +1133,8 @@ function App() {
 
   useEffect(() => {
     if (currentMainView === 'admin-reports') {
-      fetchTransactions();
+      // Admins need the full borrowing history for the reports view
+      fetchTransactions({ params: { all: 'true' } });
       fetchAdminUsers();
     }
   }, [currentMainView]);
@@ -2338,7 +2383,7 @@ function App() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {transaction.user?.name || transaction.user_email || 'Unknown User'}
+                            {getTransactionUserName(transaction)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {transaction.borrowed_date || transaction.created_at || 'N/A'}
