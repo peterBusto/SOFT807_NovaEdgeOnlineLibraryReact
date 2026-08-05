@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { BookOpen, Library, LogOut, User, Heart, ShoppingCart, History, ChevronDown } from 'lucide-react';
 import SearchBar from './components/SearchBar';
 import CategoryFilter from './components/CategoryFilter';
@@ -524,12 +524,20 @@ function App() {
           return `${day}/${month}/${year}`;
         };
         
+        // Build the book reference from whatever the API returns (nested object, ID, or separate fields)
+        const rawBook = transaction.book && typeof transaction.book === 'object' ? transaction.book : null;
+        const bookId = rawBook
+          ? rawBook.id
+          : (transaction.book_id || (typeof transaction.book === 'number' || typeof transaction.book === 'string' ? transaction.book : null));
+
         // Use the direct book_title and book_author fields from the API response
         const standardizedTransaction = {
           id: transaction.id,
           book: {
-            title: transaction.book_title || 'Unknown Book',
-            author: transaction.book_author || 'Unknown Author'
+            id: bookId || null,
+            title: rawBook?.title || transaction.book_title || 'Unknown Book',
+            author: rawBook?.author || transaction.book_author || 'Unknown Author',
+            cover_image: rawBook?.cover_image || null
           },
           borrowed_date: formatDate(transaction.borrowed_date),
           due_date: formatDate(transaction.due_date),
@@ -744,6 +752,47 @@ function App() {
   };
 
   const totalPages = Math.ceil(filteredBooks.length / itemsPerPage);
+
+  // Calculate the most-borrowed books from actual transaction history
+  const getPopularBooks = (txns, allBooks) => {
+    const counts = {};
+    txns.forEach((t) => {
+      const book = t.book || {};
+      const id = book.id != null ? book.id : null;
+      const title = book.title || 'Unknown Book';
+      const author = book.author || 'Unknown Author';
+      const key = id != null ? `id-${id}` : `${title}::${author}`;
+
+      if (!counts[key]) {
+        counts[key] = {
+          id,
+          title,
+          author,
+          cover_image: book.cover_image || null,
+          count: 0
+        };
+      }
+      counts[key].count++;
+    });
+
+    return Object.values(counts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map((item) => {
+        if (item.cover_image || item.title === 'Unknown Book') {
+          return item;
+        }
+        const catalogBook = allBooks.find((b) =>
+          (item.id != null && String(b.id) === String(item.id)) ||
+          (b.title === item.title && b.author === item.author)
+        );
+        return catalogBook?.cover_image
+          ? { ...item, cover_image: catalogBook.cover_image }
+          : item;
+      });
+  };
+
+  const popularBooks = useMemo(() => getPopularBooks(transactions, books), [transactions, books]);
 
   // Fetch transactions when switching to dashboard view
   useEffect(() => {
@@ -2241,7 +2290,7 @@ function App() {
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Active Borrows</p>
                     <p className="text-3xl font-bold text-gray-800">
-                      {transactions.filter(t => t.status !== 'returned').length}
+                      {transactions.filter(t => t.status?.toLowerCase() !== 'returned').length}
                     </p>
                   </div>
                   <div className="bg-orange-100 p-3 rounded-lg">
@@ -2299,8 +2348,8 @@ function App() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              transaction.status === 'returned' 
-                                ? 'bg-green-100 text-green-700' 
+                              transaction.status?.toLowerCase() === 'returned'
+                                ? 'bg-green-100 text-green-700'
                                 : 'bg-blue-100 text-blue-700'
                             }`}>
                               {transaction.status || 'Borrowed'}
@@ -2322,23 +2371,34 @@ function App() {
               </div>
               <div className="p-6">
                 <div className="space-y-4">
-                  {books.slice(0, 5).map((book) => (
-                    <div key={book.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center">
-                        {book.cover_image && (
-                          <img src={book.cover_image} alt={book.title} className="h-12 w-12 rounded object-cover mr-4" />
-                        )}
-                        <div>
-                          <p className="font-medium text-gray-900">{book.title}</p>
-                          <p className="text-sm text-gray-500">{book.author}</p>
+                  {loadingTransactions ? (
+                    <div className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-purple-600 border-t-transparent"></div>
+                      <p className="mt-2 text-gray-600">Loading popular books...</p>
+                    </div>
+                  ) : popularBooks.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">No borrowing data available</p>
+                    </div>
+                  ) : (
+                    popularBooks.map((book) => (
+                      <div key={book.id ? `book-${book.id}` : `${book.title}-${book.author}`} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                        <div className="flex items-center">
+                          {book.cover_image && (
+                            <img src={book.cover_image} alt={book.title} className="h-12 w-12 rounded object-cover mr-4" />
+                          )}
+                          <div>
+                            <p className="font-medium text-gray-900">{book.title}</p>
+                            <p className="text-sm text-gray-500">{book.author}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-500">Borrowed</p>
+                          <p className="font-semibold text-gray-800">{book.count} times</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-500">Borrowed</p>
-                        <p className="font-semibold text-gray-800">{book.total_copies - book.available_copies} times</p>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             </div>
