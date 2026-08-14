@@ -4,6 +4,12 @@ import { Search } from 'lucide-react';
 const SearchBar = ({ onSearch }) => {
   const [query, setQuery] = useState('');
 
+  const handleChange = (e) => {
+    const value = e.target.value;
+    setQuery(value);
+    onSearch(value);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     onSearch(query);
@@ -15,7 +21,7 @@ const SearchBar = ({ onSearch }) => {
         <input
           type="text"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={handleChange}
           placeholder="Search books by title, author, or ISBN..."
           className="w-full px-5 py-4 pl-14 text-gray-700 bg-white border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-100 transition-all duration-300 shadow-lg hover:shadow-xl"
         />
