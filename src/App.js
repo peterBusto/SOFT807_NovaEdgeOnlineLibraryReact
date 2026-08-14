@@ -952,7 +952,17 @@ function App() {
   const handleCreateBook = async (e) => {
     e.preventDefault();
     try {
-      await bookService.createBook(bookFormData);
+      // Clean up form data - convert empty strings to null for optional fields
+      const cleanedData = {
+        ...bookFormData,
+        isbn: bookFormData.isbn || null,
+        publication_date: bookFormData.publication_date || null,
+        genre: bookFormData.genre || null,
+        description: bookFormData.description || null,
+        cover_image_url: bookFormData.cover_image_url || null,
+      };
+      
+      await bookService.createBook(cleanedData);
       showNotification('Book created successfully', 'success');
       setShowBookForm(false);
       setBookFormData({
@@ -977,7 +987,17 @@ function App() {
   const handleUpdateBook = async (e) => {
     e.preventDefault();
     try {
-      await bookService.updateBook(editingBook.id, bookFormData);
+      // Clean up form data - convert empty strings to null for optional fields
+      const cleanedData = {
+        ...bookFormData,
+        isbn: bookFormData.isbn || null,
+        publication_date: bookFormData.publication_date || null,
+        genre: bookFormData.genre || null,
+        description: bookFormData.description || null,
+        cover_image_url: bookFormData.cover_image_url || null,
+      };
+      
+      await bookService.updateBook(editingBook.id, cleanedData);
       showNotification('Book updated successfully', 'success');
       setShowBookForm(false);
       setEditingBook(null);

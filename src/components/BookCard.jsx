@@ -110,7 +110,15 @@ const BookCard = ({ book, onClick }) => {
         </div>
         <div className="flex items-center gap-2 text-gray-500 mb-3">
           <Calendar size={16} />
-          <span className="text-sm">{book.published_year || 'N/A'}</span>
+          <span className="text-sm">
+            {book.publication_date 
+              ? new Date(book.publication_date).toLocaleDateString('en-GB', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                })
+              : 'N/A'}
+          </span>
         </div>
         {book.rating && (
           <div className="flex items-center gap-1 text-yellow-500">

@@ -215,7 +215,15 @@ const BookDetail = ({ book, onBack, addToCart }) => {
               <Calendar className="text-primary-600" size={24} />
               <div>
                 <p className="text-sm text-gray-500">Published</p>
-                <p className="font-semibold text-gray-800">{book.published_year || 'N/A'}</p>
+                <p className="font-semibold text-gray-800">
+                  {book.publication_date 
+                    ? new Date(book.publication_date).toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric'
+                      })
+                    : 'N/A'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
