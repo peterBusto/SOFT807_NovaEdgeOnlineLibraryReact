@@ -253,7 +253,7 @@ const BookDetail = ({ book, onBack, addToCart, categories }) => {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
               <Calendar className="text-primary-600" size={24} />
               <div>
@@ -276,17 +276,23 @@ const BookDetail = ({ book, onBack, addToCart, categories }) => {
                 <p className="font-semibold text-gray-800">{getCategoryName()}</p>
               </div>
             </div>
-          </div>
-
-          {book.isbn && (
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl mb-8">
+            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
               <FileText className="text-primary-600" size={24} />
               <div>
-                <p className="text-sm text-gray-500">ISBN</p>
-                <p className="font-semibold text-gray-800">{book.isbn}</p>
+                <p className="text-sm text-gray-500">Genre</p>
+                <p className="font-semibold text-gray-800">{book.genre || '-'}</p>
               </div>
             </div>
-          )}
+            {book.isbn && (
+              <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
+                <FileText className="text-primary-600" size={24} />
+                <div>
+                  <p className="text-sm text-gray-500">ISBN</p>
+                  <p className="font-semibold text-gray-800">{book.isbn}</p>
+                </div>
+              </div>
+            )}
+          </div>
 
           {book.description && (
             <div className="mb-8">
