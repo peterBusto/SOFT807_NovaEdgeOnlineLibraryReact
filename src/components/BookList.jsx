@@ -2,7 +2,7 @@ import React from 'react';
 import BookCard from './BookCard';
 import { Loader2 } from 'lucide-react';
 
-const BookList = ({ books, loading, onBookClick }) => {
+const BookList = ({ books, loading, onBookClick, categories }) => {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -23,7 +23,7 @@ const BookList = ({ books, loading, onBookClick }) => {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {books.map((book) => (
-        <BookCard key={book.id} book={book} onClick={() => onBookClick(book)} />
+        <BookCard key={book.id} book={book} onClick={() => onBookClick(book)} categories={categories} />
       ))}
     </div>
   );

@@ -59,6 +59,44 @@ export const bookService = {
     }
   },
 
+  createCategory: async (categoryData) => {
+    try {
+      const response = await api.post('/api/categories/', categoryData);
+      console.log('Create category successful with /api/categories/ endpoint');
+      return response.data;
+    } catch (error) {
+      console.error('Create category failed with /api/categories/ endpoint');
+      throw error;
+    }
+  },
+
+  updateCategory: async (id, categoryData) => {
+    try {
+      console.log('Updating category with ID:', id);
+      console.log('Category data being sent:', categoryData);
+      const response = await api.put(`/api/categories/${id}/`, categoryData);
+      console.log('Update category successful with /api/categories/${id}/ endpoint');
+      return response.data;
+    } catch (error) {
+      console.error('Update category failed with /api/categories/${id}/ endpoint');
+      console.error('Error response:', error.response?.data);
+      throw error;
+    }
+  },
+
+  deleteCategory: async (id) => {
+    try {
+      console.log('Deleting category with ID:', id);
+      const response = await api.delete(`/api/categories/${id}/`);
+      console.log('Delete category successful with /api/categories/${id}/ endpoint');
+      return response.data;
+    } catch (error) {
+      console.error('Delete category failed with /api/categories/${id}/ endpoint');
+      console.error('Error response:', error.response?.data);
+      throw error;
+    }
+  },
+
   // Admin Book Operations
   createBook: async (bookData) => {
     try {
@@ -81,6 +119,12 @@ export const bookService = {
     } catch (error) {
       console.error('Update book failed with /api/books/admin/${id}/update/ endpoint');
       console.error('Error response:', error.response?.data);
+      console.error('Full error:', error);
+      if (error.response?.data) {
+        Object.keys(error.response.data).forEach(field => {
+          console.error(`Field "${field}" errors:`, error.response.data[field]);
+        });
+      }
       throw error;
     }
   },
@@ -157,6 +201,9 @@ export const adminService = {
   createUser: async (userData) => bookService.createUser(userData),
   updateUser: async (id, userData) => bookService.updateUser(id, userData),
   deleteUser: async (id) => bookService.deleteUser(id),
+  createCategory: async (categoryData) => bookService.createCategory(categoryData),
+  updateCategory: async (id, categoryData) => bookService.updateCategory(id, categoryData),
+  deleteCategory: async (id) => bookService.deleteCategory(id),
 };
 
 export default api;

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, BookOpen, Star, Calendar, User, FileText, Tag, Heart, Check, ShoppingCart } from 'lucide-react';
 import api from '../services/auth';
 
-const BookDetail = ({ book, onBack, addToCart }) => {
+const BookDetail = ({ book, onBack, addToCart, categories }) => {
   const [addingToWishlist, setAddingToWishlist] = useState(false);
   const [inWishlist, setInWishlist] = useState(false);
   const [message, setMessage] = useState('');
@@ -11,6 +11,21 @@ const BookDetail = ({ book, onBack, addToCart }) => {
   const [coverUrl, setCoverUrl] = useState(null);
   const [imageError, setImageError] = useState(false);
   const [isLoadingCover, setIsLoadingCover] = useState(true);
+
+  const getCategoryName = () => {
+    if (!book.category) return '-';
+    if (typeof book.category === 'object') return book.category.name || '-';
+    if (categories && categories.length > 0) {
+      const categoryObj = categories.find(cat => {
+        const catId = typeof cat === 'object' ? cat.id : cat;
+        return catId === book.category;
+      });
+      if (categoryObj) {
+        return typeof categoryObj === 'object' ? categoryObj.name : categoryObj;
+      }
+    }
+    return '-';
+  };
 
   // Fetch cover image when book changes
   useEffect(() => {
@@ -25,6 +40,15 @@ const BookDetail = ({ book, onBack, addToCart }) => {
         return;
       }
 
+      // Check cache for previously successful cover URLs
+      const cacheKey = `book_cover_${book.id}_${book.isbn}_${book.title}`;
+      const cachedUrl = localStorage.getItem(cacheKey);
+      if (cachedUrl) {
+        setCoverUrl(cachedUrl);
+        setIsLoadingCover(false);
+        return;
+      }
+
       // If no cover from API, try Open Library API using ISBN
       if (book.isbn) {
         const isbn = book.isbn.replace(/[^0-9X]/g, ''); // Clean ISBN
@@ -32,11 +56,20 @@ const BookDetail = ({ book, onBack, addToCart }) => {
         
         try {
           const img = new Image();
+          const timeout = setTimeout(() => {
+            // If image takes too long, show fallback
+            setIsLoadingCover(false);
+          }, 3000); // 3 second timeout
+          
           img.onload = () => {
+            clearTimeout(timeout);
             setCoverUrl(openLibraryUrl);
+            // Cache the successful URL
+            localStorage.setItem(cacheKey, openLibraryUrl);
             setIsLoadingCover(false);
           };
           img.onerror = () => {
+            clearTimeout(timeout);
             fetchCoverByTitleAuthor();
           };
           img.src = openLibraryUrl;
@@ -55,11 +88,21 @@ const BookDetail = ({ book, onBack, addToCart }) => {
         
         try {
           const img = new Image();
+          const timeout = setTimeout(() => {
+            // If image takes too long, show fallback
+            setIsLoadingCover(false);
+          }, 3000); // 3 second timeout
+          
           img.onload = () => {
+            clearTimeout(timeout);
             setCoverUrl(openLibraryTitleUrl);
+            // Cache the successful URL
+            const cacheKey = `book_cover_${book.id}_${book.isbn}_${book.title}`;
+            localStorage.setItem(cacheKey, openLibraryTitleUrl);
             setIsLoadingCover(false);
           };
           img.onerror = () => {
+            clearTimeout(timeout);
             setCoverUrl(null);
             setIsLoadingCover(false);
           };
@@ -77,7 +120,7 @@ const BookDetail = ({ book, onBack, addToCart }) => {
     if (book) {
       fetchCoverImage();
     }
-  }, [book?.isbn, book?.title, book?.author, book?.cover_image, book?.cover_image_url]);
+  }, [book?.id, book?.isbn, book?.title, book?.author, book?.cover_image, book?.cover_image_url]);
 
   const handleImageError = () => {
     setImageError(true);
@@ -230,7 +273,7 @@ const BookDetail = ({ book, onBack, addToCart }) => {
               <Tag className="text-primary-600" size={24} />
               <div>
                 <p className="text-sm text-gray-500">Category</p>
-                <p className="font-semibold text-gray-800">{book.category || 'General'}</p>
+                <p className="font-semibold text-gray-800">{getCategoryName()}</p>
               </div>
             </div>
           </div>
