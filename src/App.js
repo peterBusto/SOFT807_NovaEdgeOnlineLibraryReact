@@ -6,6 +6,7 @@ import BookList from './components/BookList';
 import BookDetail from './components/BookDetail';
 import Login from './components/Login';
 import Register from './components/Register';
+import PopularBookItem from './components/PopularBookItem';
 import { bookService } from './services/api';
 import { authService } from './services/auth';
 import api from './services/auth';
@@ -297,10 +298,9 @@ function App() {
     title: '',
     author: '',
     isbn: '',
-    category: '',
     genre: '',
     description: '',
-    cover_image: '',
+    cover_image_url: '',
     publication_date: '',
     total_copies: 1,
     available_copies: 1
@@ -790,6 +790,7 @@ function App() {
           id,
           title,
           author,
+          isbn: book.isbn || null,
           cover_image: book.cover_image || null,
           count: 0
         };
@@ -808,9 +809,14 @@ function App() {
           (item.id != null && String(b.id) === String(item.id)) ||
           (b.title === item.title && b.author === item.author)
         );
-        return catalogBook?.cover_image
-          ? { ...item, cover_image: catalogBook.cover_image }
-          : item;
+        if (catalogBook) {
+          return {
+            ...item,
+            isbn: catalogBook.isbn || item.isbn,
+            cover_image: catalogBook.cover_image || catalogBook.cover_image_url || null
+          };
+        }
+        return item;
       });
   };
 
@@ -895,20 +901,77 @@ function App() {
     }
   };
 
+  const fetchBookCover = async () => {
+    const { isbn, title } = bookFormData;
+    
+    if (!isbn && !title) {
+      showNotification('Please enter ISBN or title to fetch cover', 'error');
+      return;
+    }
+
+    let coverUrl = null;
+
+    // Try ISBN first
+    if (isbn) {
+      const cleanIsbn = isbn.replace(/[^0-9X]/g, '');
+      const isbnUrl = `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-L.jpg`;
+      
+      try {
+        const response = await fetch(isbnUrl, { method: 'HEAD' });
+        if (response.ok) {
+          coverUrl = isbnUrl;
+        }
+      } catch (error) {
+        console.log('ISBN fetch failed, trying title');
+      }
+    }
+
+    // Fallback to title search
+    if (!coverUrl && title) {
+      const titleEncoded = encodeURIComponent(title);
+      const titleUrl = `https://covers.openlibrary.org/b/title/${titleEncoded}-L.jpg`;
+      
+      try {
+        const response = await fetch(titleUrl, { method: 'HEAD' });
+        if (response.ok) {
+          coverUrl = titleUrl;
+        }
+      } catch (error) {
+        console.log('Title fetch failed');
+      }
+    }
+
+    if (coverUrl) {
+      setBookFormData({ ...bookFormData, cover_image_url: coverUrl });
+      showNotification('Book cover fetched successfully!', 'success');
+    } else {
+      showNotification('No cover found for this book', 'error');
+    }
+  };
+
   const handleCreateBook = async (e) => {
     e.preventDefault();
     try {
-      await bookService.createBook(bookFormData);
+      // Clean up form data - convert empty strings to null for optional fields
+      const cleanedData = {
+        ...bookFormData,
+        isbn: bookFormData.isbn || null,
+        publication_date: bookFormData.publication_date || null,
+        genre: bookFormData.genre || null,
+        description: bookFormData.description || null,
+        cover_image_url: bookFormData.cover_image_url || null,
+      };
+      
+      await bookService.createBook(cleanedData);
       showNotification('Book created successfully', 'success');
       setShowBookForm(false);
       setBookFormData({
         title: '',
         author: '',
         isbn: '',
-        category: '',
         genre: '',
         description: '',
-        cover_image: '',
+        cover_image_url: '',
         publication_date: '',
         total_copies: 1,
         available_copies: 1
@@ -924,7 +987,17 @@ function App() {
   const handleUpdateBook = async (e) => {
     e.preventDefault();
     try {
-      await bookService.updateBook(editingBook.id, bookFormData);
+      // Clean up form data - convert empty strings to null for optional fields
+      const cleanedData = {
+        ...bookFormData,
+        isbn: bookFormData.isbn || null,
+        publication_date: bookFormData.publication_date || null,
+        genre: bookFormData.genre || null,
+        description: bookFormData.description || null,
+        cover_image_url: bookFormData.cover_image_url || null,
+      };
+      
+      await bookService.updateBook(editingBook.id, cleanedData);
       showNotification('Book updated successfully', 'success');
       setShowBookForm(false);
       setEditingBook(null);
@@ -932,10 +1005,9 @@ function App() {
         title: '',
         author: '',
         isbn: '',
-        category: '',
         genre: '',
         description: '',
-        cover_image: '',
+        cover_image_url: '',
         publication_date: '',
         total_copies: 1,
         available_copies: 1
@@ -978,10 +1050,9 @@ function App() {
       title: book.title || '',
       author: book.author || '',
       isbn: book.isbn || '',
-      category: book.category || '',
       genre: book.genre || '',
       description: book.description || '',
-      cover_image: book.cover_image || '',
+      cover_image_url: book.cover_image_url || '',
       publication_date: book.publication_date || '',
       total_copies: book.total_copies || 1,
       available_copies: book.available_copies || 1
@@ -1805,25 +1876,17 @@ function App() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">ISBN</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ISBN (Optional)</label>
                         <input
                           type="text"
                           value={bookFormData.isbn}
                           onChange={(e) => setBookFormData({...bookFormData, isbn: e.target.value})}
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          placeholder="Enter ISBN for cover fetching"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                        <input
-                          type="text"
-                          value={bookFormData.category}
-                          onChange={(e) => setBookFormData({...bookFormData, category: e.target.value})}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Genre</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Genre (Optional)</label>
                         <input
                           type="text"
                           value={bookFormData.genre}
@@ -1832,7 +1895,7 @@ function App() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Publication Date</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Publication Date (Optional)</label>
                         <input
                           type="date"
                           value={bookFormData.publication_date}
@@ -1865,12 +1928,23 @@ function App() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Cover Image URL</label>
-                      <input
-                        type="text"
-                        value={bookFormData.cover_image}
-                        onChange={(e) => setBookFormData({...bookFormData, cover_image: e.target.value})}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={bookFormData.cover_image_url}
+                          onChange={(e) => setBookFormData({...bookFormData, cover_image_url: e.target.value})}
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          placeholder="Enter URL or click 'Fetch Cover'"
+                        />
+                        <button
+                          type="button"
+                          onClick={fetchBookCover}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                        >
+                          Fetch Cover
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Auto-fetches cover from Open Library using ISBN or title</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -1897,10 +1971,9 @@ function App() {
                             title: '',
                             author: '',
                             isbn: '',
-                            category: '',
                             genre: '',
                             description: '',
-                            cover_image: '',
+                            cover_image_url: '',
                             publication_date: '',
                             total_copies: 1,
                             available_copies: 1
@@ -2427,21 +2500,7 @@ function App() {
                     </div>
                   ) : (
                     popularBooks.map((book) => (
-                      <div key={book.id ? `book-${book.id}` : `${book.title}-${book.author}`} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div className="flex items-center">
-                          {book.cover_image && (
-                            <img src={book.cover_image} alt={book.title} className="h-12 w-12 rounded object-cover mr-4" />
-                          )}
-                          <div>
-                            <p className="font-medium text-gray-900">{book.title}</p>
-                            <p className="text-sm text-gray-500">{book.author}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-500">Borrowed</p>
-                          <p className="font-semibold text-gray-800">{book.count} times</p>
-                        </div>
-                      </div>
+                      <PopularBookItem key={book.id ? `book-${book.id}` : `${book.title}-${book.author}`} book={book} />
                     ))
                   )}
                 </div>
