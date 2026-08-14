@@ -205,12 +205,23 @@ function App() {
     // Client-side search filtering
     const lowerQuery = query.toLowerCase();
     const filtered = books.filter(book => {
-      const title = book.title?.toLowerCase() || '';
-      const author = book.author?.toLowerCase() || '';
-      const category = book.category?.toLowerCase() || book.genre?.toLowerCase() || '';
+      const title = String(book.title || '').toLowerCase();
+      const author = String(book.author || '').toLowerCase();
+      const isbn = String(book.isbn || '').toLowerCase();
+      let category = '';
+      if (book.category) {
+        if (typeof book.category === 'object' && book.category.name) {
+          category = String(book.category.name).toLowerCase();
+        } else {
+          category = String(book.category).toLowerCase();
+        }
+      }
+      const genre = String(book.genre || '').toLowerCase();
       return title.includes(lowerQuery) || 
              author.includes(lowerQuery) || 
-             category.includes(lowerQuery);
+             isbn.includes(lowerQuery) ||
+             category.includes(lowerQuery) ||
+             genre.includes(lowerQuery);
     });
     setFilteredBooks(filtered);
   };
@@ -237,7 +248,11 @@ function App() {
     if (category === 'all') {
       setFilteredBooks(books);
     } else {
-      const filtered = books.filter(book => book.category === category);
+      const filtered = books.filter(book => {
+        if (!book.category) return false;
+        const bookCategoryId = typeof book.category === 'object' ? book.category.id : book.category;
+        return bookCategoryId === category;
+      });
       setFilteredBooks(filtered);
     }
   };
