@@ -1,13 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen, Star, Calendar, User } from 'lucide-react';
 
-const BookCard = ({ book, onClick }) => {
+const BookCard = ({ book, onClick, categories }) => {
   const [coverUrl, setCoverUrl] = useState(null);
   const [imageError, setImageError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const getCategoryName = () => {
+    if (!book.category) return '-';
+    if (typeof book.category === 'object') return book.category.name || '-';
+    if (categories && categories.length > 0) {
+      const categoryObj = categories.find(cat => {
+        const catId = typeof cat === 'object' ? cat.id : cat;
+        return catId === book.category;
+      });
+      if (categoryObj) {
+        return typeof categoryObj === 'object' ? categoryObj.name : categoryObj;
+      }
+    }
+    return '-';
+  };
+
   useEffect(() => {
-    const fetchCoverImage = async () => {
+    const fetchCoverImage = () => {
       setIsLoading(true);
       setImageError(false);
       
@@ -18,62 +33,42 @@ const BookCard = ({ book, onClick }) => {
         return;
       }
 
+      // Check cache for previously successful cover URLs
+      const cacheKey = `book_cover_${book.id}_${book.isbn}_${book.title}`;
+      const cachedUrl = localStorage.getItem(cacheKey);
+      if (cachedUrl) {
+        setCoverUrl(cachedUrl);
+        setIsLoading(false);
+        return;
+      }
+
       // If no cover from API, try Open Library API using ISBN
       if (book.isbn) {
         const isbn = book.isbn.replace(/[^0-9X]/g, ''); // Clean ISBN
-        const openLibraryUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
-        
-        // Check if the image exists by making a request
-        try {
-          const img = new Image();
-          img.onload = () => {
-            setCoverUrl(openLibraryUrl);
-            setIsLoading(false);
-          };
-          img.onerror = () => {
-            // If ISBN lookup fails, try title/author search
-            fetchCoverByTitleAuthor();
-          };
-          img.src = openLibraryUrl;
-        } catch (error) {
-          fetchCoverByTitleAuthor();
-        }
-      } else {
-        // No ISBN, try title/author search
-        fetchCoverByTitleAuthor();
-      }
-    };
-
-    const fetchCoverByTitleAuthor = () => {
-      if (book.title && book.author) {
-        // Use Open Library's title-based cover API
-        const titleEncoded = encodeURIComponent(book.title);
-        const openLibraryTitleUrl = `https://covers.openlibrary.org/b/title/${titleEncoded}-L.jpg`;
-        
-        try {
-          const img = new Image();
-          img.onload = () => {
-            setCoverUrl(openLibraryTitleUrl);
-            setIsLoading(false);
-          };
-          img.onerror = () => {
-            // Final fallback: no image available
-            setCoverUrl(null);
-            setIsLoading(false);
-          };
-          img.src = openLibraryTitleUrl;
-        } catch (error) {
-          setCoverUrl(null);
-          setIsLoading(false);
-        }
-      } else {
-        setCoverUrl(null);
+        const openLibraryUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-S.jpg`; // Use small size
+        setCoverUrl(openLibraryUrl);
+        localStorage.setItem(cacheKey, openLibraryUrl);
         setIsLoading(false);
+        return;
       }
+
+      // No ISBN, try title/author search
+      if (book.title && book.author) {
+        const titleEncoded = encodeURIComponent(book.title);
+        const openLibraryTitleUrl = `https://covers.openlibrary.org/b/title/${titleEncoded}-S.jpg`; // Use small size
+        setCoverUrl(openLibraryTitleUrl);
+        localStorage.setItem(cacheKey, openLibraryTitleUrl);
+        setIsLoading(false);
+        return;
+      }
+
+      // No cover available
+      setCoverUrl(null);
+      setIsLoading(false);
     };
 
     fetchCoverImage();
-  }, [book.isbn, book.title, book.author, book.cover_image, book.cover_image_url]);
+  }, [book.id, book.isbn, book.title, book.author, book.cover_image, book.cover_image_url]);
 
   const handleImageError = () => {
     setImageError(true);
@@ -95,6 +90,8 @@ const BookCard = ({ book, onClick }) => {
             className="w-full h-full object-cover"
             onError={handleImageError}
             onLoad={() => setIsLoading(false)}
+            loading="lazy"
+            fetchPriority="low"
           />
         ) : null}
         <BookOpen className={`text-white opacity-80 fallback-icon ${coverUrl && !imageError ? 'hidden' : 'flex'}`} size={64} />
@@ -128,7 +125,7 @@ const BookCard = ({ book, onClick }) => {
         )}
         <div className="mt-4 pt-4 border-t border-gray-100">
           <span className="inline-block px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-xs font-medium">
-            {book.category || 'General'}
+            {getCategoryName()}
           </span>
         </div>
       </div>

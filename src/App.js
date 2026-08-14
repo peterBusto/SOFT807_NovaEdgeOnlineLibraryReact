@@ -215,7 +215,7 @@ function App() {
     setFilteredBooks(filtered);
   };
 
-  const handleCategoryChange = async (category) => {
+  const handleCategoryChange = (category) => {
     setSelectedCategory(category);
     setSearchQuery('');
 
@@ -224,16 +224,13 @@ function App() {
       return;
     }
 
-    try {
-      setLoading(true);
-      const data = await bookService.getBooksByCategory(category);
-      setFilteredBooks(data);
-    } catch (error) {
-      console.error('Error filtering by category:', error);
-      setFilteredBooks([]);
-    } finally {
-      setLoading(false);
-    }
+    // Filter by category ID
+    const filtered = books.filter(book => {
+      if (!book.category) return false;
+      const bookCategoryId = typeof book.category === 'object' ? book.category.id : book.category;
+      return bookCategoryId === category;
+    });
+    setFilteredBooks(filtered);
   };
 
   const filterByCategory = (category) => {
@@ -274,7 +271,7 @@ function App() {
     return isAdminUser;
   };
 
-  const [currentMainView, setCurrentMainView] = useState('library'); // 'library', 'wishlist', 'cart', 'history', 'dashboard', 'admin-books', 'admin-users', 'admin-reports'
+  const [currentMainView, setCurrentMainView] = useState('library'); // 'library', 'wishlist', 'cart', 'history', 'dashboard', 'admin-books', 'admin-users', 'admin-reports', 'admin-categories'
   const [wishlistBooks, setWishlistBooks] = useState([]);
   const [loadingWishlist, setLoadingWishlist] = useState(false);
   const [cart, setCart] = useState([]);
@@ -290,14 +287,17 @@ function App() {
   // Admin state
   const [adminBooks, setAdminBooks] = useState([]);
   const [adminUsers, setAdminUsers] = useState([]);
+  const [adminCategories, setAdminCategories] = useState([]);
   const [loadingAdminBooks, setLoadingAdminBooks] = useState(false);
   const [loadingAdminUsers, setLoadingAdminUsers] = useState(false);
+  const [loadingAdminCategories, setLoadingAdminCategories] = useState(false);
   const [showBookForm, setShowBookForm] = useState(false);
   const [editingBook, setEditingBook] = useState(null);
   const [bookFormData, setBookFormData] = useState({
     title: '',
     author: '',
     isbn: '',
+    category: '',
     genre: '',
     description: '',
     cover_image_url: '',
@@ -315,10 +315,18 @@ function App() {
     role: 'user',
     is_admin: false
   });
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [categoryFormData, setCategoryFormData] = useState({
+    name: '',
+    description: ''
+  });
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
   const [showBookDeleteModal, setShowBookDeleteModal] = useState(false);
   const [bookToDelete, setBookToDelete] = useState(null);
+  const [showCategoryDeleteModal, setShowCategoryDeleteModal] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
 
   const showNotification = (message, type = 'success') => {
     console.log('showNotification called with:', message, type);
@@ -901,6 +909,26 @@ function App() {
     }
   };
 
+  const fetchAdminCategories = async () => {
+    try {
+      setLoadingAdminCategories(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('No token found in localStorage for admin categories fetch');
+        showNotification('Authentication required. Please log in again.', 'error');
+        return;
+      }
+      authService.setAuthToken(token);
+      const data = await bookService.getCategories();
+      setAdminCategories(data);
+    } catch (error) {
+      console.error('Error fetching admin categories:', error);
+      showNotification('Failed to fetch categories', 'error');
+    } finally {
+      setLoadingAdminCategories(false);
+    }
+  };
+
   const fetchBookCover = async () => {
     const { isbn, title } = bookFormData;
     
@@ -952,16 +980,23 @@ function App() {
   const handleCreateBook = async (e) => {
     e.preventDefault();
     try {
-      // Clean up form data - convert empty strings to null for optional fields
+      // Clean up form data - only include fields that have values
       const cleanedData = {
-        ...bookFormData,
-        isbn: bookFormData.isbn || null,
-        publication_date: bookFormData.publication_date || null,
-        genre: bookFormData.genre || null,
-        description: bookFormData.description || null,
-        cover_image_url: bookFormData.cover_image_url || null,
+        title: bookFormData.title,
+        author: bookFormData.author,
+        total_copies: bookFormData.total_copies,
+        available_copies: bookFormData.available_copies,
       };
-      
+
+      // Only add optional fields if they have values
+      if (bookFormData.isbn) cleanedData.isbn = bookFormData.isbn;
+      if (bookFormData.category) cleanedData.category = parseInt(bookFormData.category);
+      if (bookFormData.publication_date) cleanedData.publication_date = bookFormData.publication_date;
+      if (bookFormData.genre) cleanedData.genre = bookFormData.genre;
+      if (bookFormData.description) cleanedData.description = bookFormData.description;
+      if (bookFormData.cover_image_url) cleanedData.cover_image_url = bookFormData.cover_image_url;
+
+      console.log('Creating book with data:', cleanedData);
       await bookService.createBook(cleanedData);
       showNotification('Book created successfully', 'success');
       setShowBookForm(false);
@@ -987,16 +1022,37 @@ function App() {
   const handleUpdateBook = async (e) => {
     e.preventDefault();
     try {
-      // Clean up form data - convert empty strings to null for optional fields
+      // Clean up form data - only send fields that won't cause validation errors
       const cleanedData = {
-        ...bookFormData,
-        isbn: bookFormData.isbn || null,
-        publication_date: bookFormData.publication_date || null,
-        genre: bookFormData.genre || null,
-        description: bookFormData.description || null,
-        cover_image_url: bookFormData.cover_image_url || null,
+        title: bookFormData.title,
+        author: bookFormData.author,
+        category: bookFormData.category ? parseInt(bookFormData.category) : editingBook?.category?.id || null,
+        total_copies: bookFormData.total_copies,
+        available_copies: bookFormData.available_copies,
       };
+
+      // Always send isbn and genre as backend may require them
+      // Truncate ISBN to max 13 characters as per backend validation
+      cleanedData.isbn = bookFormData.isbn ? bookFormData.isbn.substring(0, 13) : '';
+      // Genre cannot be blank - use form value or existing book's genre or default
+      cleanedData.genre = (bookFormData.genre && bookFormData.genre.trim() !== '') 
+        ? bookFormData.genre 
+        : (editingBook?.genre || 'General');
       
+      // Only add other optional fields if they have values
+      if (bookFormData.publication_date && bookFormData.publication_date.trim() !== '') {
+        cleanedData.publication_date = bookFormData.publication_date;
+      }
+      if (bookFormData.description && bookFormData.description.trim() !== '') {
+        cleanedData.description = bookFormData.description;
+      }
+      if (bookFormData.cover_image_url && bookFormData.cover_image_url.trim() !== '') {
+        cleanedData.cover_image_url = bookFormData.cover_image_url;
+      }
+
+      console.log('Updating book with data:', cleanedData);
+      console.log('Original bookFormData:', bookFormData);
+      console.log('Editing book:', editingBook);
       await bookService.updateBook(editingBook.id, cleanedData);
       showNotification('Book updated successfully', 'success');
       setShowBookForm(false);
@@ -1005,6 +1061,7 @@ function App() {
         title: '',
         author: '',
         isbn: '',
+        category: '',
         genre: '',
         description: '',
         cover_image_url: '',
@@ -1016,6 +1073,8 @@ function App() {
       fetchBooks(); // Refresh main books list
     } catch (error) {
       console.error('Error updating book:', error);
+      console.error('Error response data:', error.response?.data);
+      console.error('Error response status:', error.response?.status);
       showNotification('Failed to update book', 'error');
     }
   };
@@ -1050,6 +1109,7 @@ function App() {
       title: book.title || '',
       author: book.author || '',
       isbn: book.isbn || '',
+      category: book.category ? (typeof book.category === 'object' ? book.category.id : book.category) : '',
       genre: book.genre || '',
       description: book.description || '',
       cover_image_url: book.cover_image_url || '',
@@ -1058,6 +1118,76 @@ function App() {
       available_copies: book.available_copies || 1
     });
     setShowBookForm(true);
+  };
+
+  const handleEditCategoryClick = (category) => {
+    setEditingCategory(category);
+    setCategoryFormData({
+      name: category.name || category,
+      description: category.description || ''
+    });
+    setShowCategoryForm(true);
+  };
+
+  const handleCreateCategory = async (e) => {
+    e.preventDefault();
+    try {
+      await bookService.createCategory(categoryFormData);
+      showNotification('Category created successfully', 'success');
+      setShowCategoryForm(false);
+      setCategoryFormData({
+        name: '',
+        description: ''
+      });
+      fetchAdminCategories();
+      fetchCategories(); // Refresh main categories list
+    } catch (error) {
+      console.error('Error creating category:', error);
+      showNotification('Failed to create category', 'error');
+    }
+  };
+
+  const handleUpdateCategory = async (e) => {
+    e.preventDefault();
+    try {
+      await bookService.updateCategory(editingCategory.id, categoryFormData);
+      showNotification('Category updated successfully', 'success');
+      setShowCategoryForm(false);
+      setEditingCategory(null);
+      setCategoryFormData({
+        name: '',
+        description: ''
+      });
+      fetchAdminCategories();
+      fetchCategories(); // Refresh main categories list
+    } catch (error) {
+      console.error('Error updating category:', error);
+      showNotification('Failed to update category', 'error');
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId) => {
+    setCategoryToDelete(categoryId);
+    setShowCategoryDeleteModal(true);
+  };
+
+  const confirmDeleteCategory = async () => {
+    try {
+      await bookService.deleteCategory(categoryToDelete);
+      showNotification('Category deleted successfully', 'success');
+      setShowCategoryDeleteModal(false);
+      setCategoryToDelete(null);
+      fetchAdminCategories();
+      fetchCategories(); // Refresh main categories list
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      showNotification('Failed to delete category', 'error');
+    }
+  };
+
+  const cancelDeleteCategory = () => {
+    setShowCategoryDeleteModal(false);
+    setCategoryToDelete(null);
   };
 
   const handleDeleteUser = async (user) => {
@@ -1203,6 +1333,12 @@ function App() {
   }, [currentMainView]);
 
   useEffect(() => {
+    if (currentMainView === 'admin-categories') {
+      fetchAdminCategories();
+    }
+  }, [currentMainView]);
+
+  useEffect(() => {
     if (currentMainView === 'admin-reports') {
       // Admins need the full borrowing history for the reports view
       fetchTransactions({ params: { all: 'true' } });
@@ -1285,7 +1421,7 @@ function App() {
                     setCurrentMainView('admin-books');
                   }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                    currentMainView === 'admin-books' || currentMainView === 'admin-users' || currentMainView === 'admin-reports'
+                    currentMainView === 'admin-books' || currentMainView === 'admin-users' || currentMainView === 'admin-reports' || currentMainView === 'admin-categories'
                       ? 'bg-purple-50 text-purple-600' 
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
@@ -1389,6 +1525,21 @@ function App() {
                         <button
                           onClick={() => {
                             setSelectedBook(null);
+                            setCurrentMainView('admin-categories');
+                            setUserDropdownOpen(false);
+                          }}
+                          className={`w-full px-4 py-2 text-left flex items-center gap-3 transition-colors ${
+                            currentMainView === 'admin-categories' 
+                              ? 'bg-purple-50 text-purple-600' 
+                              : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          <BookOpen size={18} />
+                          <span>Manage Categories</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedBook(null);
                             setCurrentMainView('admin-reports');
                             setUserDropdownOpen(false);
                           }}
@@ -1424,7 +1575,7 @@ function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {selectedBook ? (
-          <BookDetail book={selectedBook} onBack={handleBack} addToCart={addToCart} />
+          <BookDetail book={selectedBook} onBack={handleBack} addToCart={addToCart} categories={categories} />
         ) : currentMainView === 'wishlist' ? (
           <>
             <div className="mb-8">
@@ -1453,6 +1604,7 @@ function App() {
                 books={wishlistBooks}
                 loading={loadingWishlist}
                 onBookClick={handleBookClick}
+                categories={categories}
               />
             )}
           </>
@@ -1493,7 +1645,15 @@ function App() {
                             <h3 className="font-semibold text-gray-800">{book.title}</h3>
                             <p className="text-sm text-gray-600">{book.author}</p>
                             <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                              <span>{book.genre || book.category || 'General'}</span>
+                              <span>{(() => {
+                                if (!book.category) return '-';
+                                if (typeof book.category === 'object') return book.category.name || '-';
+                                const categoryObj = categories.find(cat => {
+                                  const catId = typeof cat === 'object' ? cat.id : cat;
+                                  return catId === book.category;
+                                });
+                                return categoryObj ? (typeof categoryObj === 'object' ? categoryObj.name : categoryObj) : '-';
+                              })()}</span>
                               <span>Available: {book.available_copies || book.copies_available || 'N/A'}</span>
                             </div>
                           </div>
@@ -1808,6 +1968,16 @@ function App() {
                 Manage Users
               </button>
               <button
+                onClick={() => setCurrentMainView('admin-categories')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentMainView === 'admin-categories'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Manage Categories
+              </button>
+              <button
                 onClick={() => setCurrentMainView('admin-reports')}
                 className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                   currentMainView === 'admin-reports'
@@ -1884,6 +2054,25 @@ function App() {
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                           placeholder="Enter ISBN for cover fetching"
                         />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Category (Optional)</label>
+                        <select
+                          value={bookFormData.category}
+                          onChange={(e) => setBookFormData({...bookFormData, category: e.target.value})}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        >
+                          <option value="">Select a category</option>
+                          {categories.map((cat) => {
+                            const categoryName = typeof cat === 'object' ? cat.name : cat;
+                            const categoryId = typeof cat === 'object' ? cat.id : cat;
+                            return (
+                              <option key={categoryId} value={categoryId}>
+                                {categoryName}
+                              </option>
+                            );
+                          })}
+                        </select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Genre (Optional)</label>
@@ -2019,7 +2208,18 @@ function App() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{book.author}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{book.category || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {(() => {
+                            if (!book.category) return '-';
+                            if (typeof book.category === 'object') return book.category.name || '-';
+                            // If it's an ID, try to find the category name from categories list
+                            const categoryObj = categories.find(cat => {
+                              const catId = typeof cat === 'object' ? cat.id : cat;
+                              return catId === book.category;
+                            });
+                            return categoryObj ? (typeof categoryObj === 'object' ? categoryObj.name : categoryObj) : book.category;
+                          })()}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{book.total_copies || 0}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{book.available_copies || 0}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -2094,6 +2294,16 @@ function App() {
                 }`}
               >
                 Manage Users
+              </button>
+              <button
+                onClick={() => setCurrentMainView('admin-categories')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentMainView === 'admin-categories'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Manage Categories
               </button>
               <button
                 onClick={() => setCurrentMainView('admin-reports')}
@@ -2327,6 +2537,201 @@ function App() {
               </div>
             )}
           </>
+        ) : currentMainView === 'admin-categories' ? (
+          <>
+            {/* Admin Navigation Tabs */}
+            <div className="mb-8 flex gap-4 border-b border-gray-200 pb-4">
+              <button
+                onClick={() => setCurrentMainView('admin-books')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentMainView === 'admin-books'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Manage Books
+              </button>
+              <button
+                onClick={() => setCurrentMainView('admin-users')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentMainView === 'admin-users'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Manage Users
+              </button>
+              <button
+                onClick={() => setCurrentMainView('admin-categories')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentMainView === 'admin-categories'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Manage Categories
+              </button>
+              <button
+                onClick={() => setCurrentMainView('admin-reports')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentMainView === 'admin-reports'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Borrow Reports
+              </button>
+            </div>
+
+            <div className="mb-8 flex justify-between items-center">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-800 mb-2">Manage Categories</h2>
+                <p className="text-gray-600">Add, edit, or remove book categories</p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingCategory(null);
+                  setCategoryFormData({
+                    name: '',
+                    description: ''
+                  });
+                  setShowCategoryForm(true);
+                }}
+                className="bg-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-purple-700 transition-colors"
+              >
+                Add New Category
+              </button>
+            </div>
+
+            {showCategoryForm && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-xl p-8 shadow-xl max-w-2xl w-full mx-4">
+                  <h3 className="text-xl font-semibold text-gray-800 mb-4">
+                    {editingCategory ? 'Edit Category' : 'Add New Category'}
+                  </h3>
+                  <form onSubmit={editingCategory ? handleUpdateCategory : handleCreateCategory} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Category Name</label>
+                      <input
+                        type="text"
+                        value={categoryFormData.name}
+                        onChange={(e) => setCategoryFormData({...categoryFormData, name: e.target.value})}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
+                      <textarea
+                        value={categoryFormData.description}
+                        onChange={(e) => setCategoryFormData({...categoryFormData, description: e.target.value})}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        rows="3"
+                      />
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        type="submit"
+                        className="bg-purple-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-purple-700 transition-colors"
+                      >
+                        {editingCategory ? 'Update Category' : 'Create Category'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCategoryForm(false);
+                          setEditingCategory(null);
+                          setCategoryFormData({
+                            name: '',
+                            description: ''
+                          });
+                        }}
+                        className="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {loadingAdminCategories ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-purple-600 border-t-transparent"></div>
+                <p className="mt-4 text-gray-600">Loading categories...</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {adminCategories.map((category) => {
+                      const categoryName = typeof category === 'object' ? category.name : category;
+                      const categoryId = typeof category === 'object' ? category.id : category;
+                      const categoryDescription = typeof category === 'object' ? category.description : '';
+                      return (
+                        <tr key={categoryId} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {categoryName}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">{categoryDescription || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button
+                              onClick={() => handleEditCategoryClick(category)}
+                              className="text-purple-600 hover:text-purple-900 mr-4"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCategory(categoryId)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {adminCategories.length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No categories found</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {showCategoryDeleteModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-xl p-8 shadow-xl max-w-md w-full mx-4">
+                  <h3 className="text-xl font-semibold text-gray-800 mb-4">Delete Category</h3>
+                  <p className="text-gray-600 mb-6">Are you sure you want to delete this category? This action cannot be undone.</p>
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      onClick={cancelDeleteCategory}
+                      className="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={confirmDeleteCategory}
+                      className="bg-red-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-red-700 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         ) : currentMainView === 'admin-reports' ? (
           <>
             {/* Admin Navigation Tabs */}
@@ -2350,6 +2755,16 @@ function App() {
                 }`}
               >
                 Manage Users
+              </button>
+              <button
+                onClick={() => setCurrentMainView('admin-categories')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentMainView === 'admin-categories'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Manage Categories
               </button>
               <button
                 onClick={() => setCurrentMainView('admin-reports')}
@@ -2528,6 +2943,7 @@ function App() {
               books={getPaginatedBooks(filteredBooks)}
               loading={loading}
               onBookClick={handleBookClick}
+              categories={categories}
             />
 
             {/* Pagination */}

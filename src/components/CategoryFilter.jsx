@@ -19,19 +19,23 @@ const CategoryFilter = ({ categories, selectedCategory, onCategoryChange }) => {
         >
           All Books
         </button>
-        {categories.map((category) => (
-          <button
-            key={category}
-            onClick={() => onCategoryChange(category)}
-            className={`px-5 py-2.5 rounded-full font-medium transition-all duration-300 ${
-              selectedCategory === category
-                ? 'bg-primary-600 text-white shadow-lg shadow-primary-200'
-                : 'bg-white text-gray-700 border-2 border-gray-200 hover:border-primary-400 hover:bg-primary-50'
-            }`}
-          >
-            {category}
-          </button>
-        ))}
+        {categories.map((category) => {
+          const categoryName = typeof category === 'object' ? category.name : category;
+          const categoryId = typeof category === 'object' ? category.id : category;
+          return (
+            <button
+              key={categoryId}
+              onClick={() => onCategoryChange(categoryId)}
+              className={`px-5 py-2.5 rounded-full font-medium transition-all duration-300 ${
+                selectedCategory === categoryId
+                  ? 'bg-primary-600 text-white shadow-lg shadow-primary-200'
+                  : 'bg-white text-gray-700 border-2 border-gray-200 hover:border-primary-400 hover:bg-primary-50'
+              }`}
+            >
+              {categoryName}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
