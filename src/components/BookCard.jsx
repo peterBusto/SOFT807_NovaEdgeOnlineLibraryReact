@@ -1,25 +1,103 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BookOpen, Star, Calendar, User } from 'lucide-react';
 
 const BookCard = ({ book, onClick }) => {
+  const [coverUrl, setCoverUrl] = useState(null);
+  const [imageError, setImageError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchCoverImage = async () => {
+      setIsLoading(true);
+      setImageError(false);
+      
+      // First, try to use the cover_image from the API response
+      if (book.cover_image || book.cover_image_url) {
+        setCoverUrl(book.cover_image || book.cover_image_url);
+        setIsLoading(false);
+        return;
+      }
+
+      // If no cover from API, try Open Library API using ISBN
+      if (book.isbn) {
+        const isbn = book.isbn.replace(/[^0-9X]/g, ''); // Clean ISBN
+        const openLibraryUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+        
+        // Check if the image exists by making a request
+        try {
+          const img = new Image();
+          img.onload = () => {
+            setCoverUrl(openLibraryUrl);
+            setIsLoading(false);
+          };
+          img.onerror = () => {
+            // If ISBN lookup fails, try title/author search
+            fetchCoverByTitleAuthor();
+          };
+          img.src = openLibraryUrl;
+        } catch (error) {
+          fetchCoverByTitleAuthor();
+        }
+      } else {
+        // No ISBN, try title/author search
+        fetchCoverByTitleAuthor();
+      }
+    };
+
+    const fetchCoverByTitleAuthor = () => {
+      if (book.title && book.author) {
+        // Use Open Library's title-based cover API
+        const titleEncoded = encodeURIComponent(book.title);
+        const openLibraryTitleUrl = `https://covers.openlibrary.org/b/title/${titleEncoded}-L.jpg`;
+        
+        try {
+          const img = new Image();
+          img.onload = () => {
+            setCoverUrl(openLibraryTitleUrl);
+            setIsLoading(false);
+          };
+          img.onerror = () => {
+            // Final fallback: no image available
+            setCoverUrl(null);
+            setIsLoading(false);
+          };
+          img.src = openLibraryTitleUrl;
+        } catch (error) {
+          setCoverUrl(null);
+          setIsLoading(false);
+        }
+      } else {
+        setCoverUrl(null);
+        setIsLoading(false);
+      }
+    };
+
+    fetchCoverImage();
+  }, [book.isbn, book.title, book.author, book.cover_image, book.cover_image_url]);
+
+  const handleImageError = () => {
+    setImageError(true);
+    setCoverUrl(null);
+  };
+
   return (
     <div
       onClick={onClick}
       className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer overflow-hidden border border-gray-100 hover:border-primary-200 transform hover:-translate-y-2"
     >
       <div className="h-48 bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center relative overflow-hidden">
-        {book.cover_image ? (
+        {isLoading ? (
+          <div className="animate-pulse bg-white/20 w-full h-full" />
+        ) : coverUrl && !imageError ? (
           <img 
-            src={book.cover_image} 
+            src={coverUrl} 
             alt={book.title || 'Book cover'} 
             className="w-full h-full object-cover"
-            onError={(e) => {
-              e.target.style.display = 'none';
-              e.target.parentElement.querySelector('.fallback-icon').style.display = 'flex';
-            }}
+            onError={handleImageError}
+            onLoad={() => setIsLoading(false)}
           />
         ) : null}
-        <BookOpen className={`text-white opacity-80 fallback-icon ${book.cover_image ? 'hidden' : 'flex'}`} size={64} />
+        <BookOpen className={`text-white opacity-80 fallback-icon ${coverUrl && !imageError ? 'hidden' : 'flex'}`} size={64} />
         <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-10 transition-opacity duration-300" />
       </div>
       <div className="p-5">

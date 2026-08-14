@@ -8,6 +8,81 @@ const BookDetail = ({ book, onBack, addToCart }) => {
   const [message, setMessage] = useState('');
   const [loadingWishlist, setLoadingWishlist] = useState(true);
   const [addedToCart, setAddedToCart] = useState(false);
+  const [coverUrl, setCoverUrl] = useState(null);
+  const [imageError, setImageError] = useState(false);
+  const [isLoadingCover, setIsLoadingCover] = useState(true);
+
+  // Fetch cover image when book changes
+  useEffect(() => {
+    const fetchCoverImage = async () => {
+      setIsLoadingCover(true);
+      setImageError(false);
+      
+      // First, try to use the cover_image from the API response
+      if (book.cover_image || book.cover_image_url) {
+        setCoverUrl(book.cover_image || book.cover_image_url);
+        setIsLoadingCover(false);
+        return;
+      }
+
+      // If no cover from API, try Open Library API using ISBN
+      if (book.isbn) {
+        const isbn = book.isbn.replace(/[^0-9X]/g, ''); // Clean ISBN
+        const openLibraryUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+        
+        try {
+          const img = new Image();
+          img.onload = () => {
+            setCoverUrl(openLibraryUrl);
+            setIsLoadingCover(false);
+          };
+          img.onerror = () => {
+            fetchCoverByTitleAuthor();
+          };
+          img.src = openLibraryUrl;
+        } catch (error) {
+          fetchCoverByTitleAuthor();
+        }
+      } else {
+        fetchCoverByTitleAuthor();
+      }
+    };
+
+    const fetchCoverByTitleAuthor = () => {
+      if (book.title && book.author) {
+        const titleEncoded = encodeURIComponent(book.title);
+        const openLibraryTitleUrl = `https://covers.openlibrary.org/b/title/${titleEncoded}-L.jpg`;
+        
+        try {
+          const img = new Image();
+          img.onload = () => {
+            setCoverUrl(openLibraryTitleUrl);
+            setIsLoadingCover(false);
+          };
+          img.onerror = () => {
+            setCoverUrl(null);
+            setIsLoadingCover(false);
+          };
+          img.src = openLibraryTitleUrl;
+        } catch (error) {
+          setCoverUrl(null);
+          setIsLoadingCover(false);
+        }
+      } else {
+        setCoverUrl(null);
+        setIsLoadingCover(false);
+      }
+    };
+
+    if (book) {
+      fetchCoverImage();
+    }
+  }, [book?.isbn, book?.title, book?.author, book?.cover_image, book?.cover_image_url]);
+
+  const handleImageError = () => {
+    setImageError(true);
+    setCoverUrl(null);
+  };
 
   // Check if book is in wishlist when component loads
   useEffect(() => {
@@ -102,8 +177,20 @@ const BookDetail = ({ book, onBack, addToCart }) => {
       </button>
 
       <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
-        <div className="h-64 bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center relative">
-          <BookOpen className="text-white opacity-80" size={96} />
+        <div className="h-64 bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center relative overflow-hidden">
+          {isLoadingCover ? (
+            <div className="animate-pulse bg-white/20 w-full h-full" />
+          ) : coverUrl && !imageError ? (
+            <img 
+              src={coverUrl} 
+              alt={book.title || 'Book cover'} 
+              className="w-full h-full object-cover"
+              onError={handleImageError}
+              onLoad={() => setIsLoadingCover(false)}
+            />
+          ) : (
+            <BookOpen className="text-white opacity-80" size={96} />
+          )}
         </div>
 
         <div className="p-8">
